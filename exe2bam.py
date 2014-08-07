@@ -165,16 +165,16 @@ class ExeWriter:
       if ((byte_count % 128) == 0):
         #The first and subsequent lines require different formatting
         if byte_count == 0:
-          self.posh_hex += '" > %s.txt\n<NUL set /p ="'  % self.posh_file
+          self.posh_hex += '"> %s.txt\n<NUL set /p ="'  % self.posh_file
         else:
-          self.posh_hex += '" >> %s.txt\n<NUL set /p ="' % self.posh_file
+          self.posh_hex += '">> %s.txt\n<NUL set /p ="' % self.posh_file
 
       #Append ASCII hex byte and increment count
       self.posh_hex       += '{:02x}'.format(ord(byte))
       byte_count          += 1
 
     #Add final output line
-    self.posh_hex         += '" >> %s.txt' % self.posh_file
+    self.posh_hex         += '">> %s.txt' % self.posh_file
 
   #Generic method for writing files
   def write_file(self, filepath, contents):
