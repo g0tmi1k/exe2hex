@@ -1,23 +1,27 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-# Name: exe2hex v1.1 (2015-11-17)
+# Name: exe2hex v1.2 (2016-01-15)
 # Author: g0tmilk ~ https://blog.g0tmi1k.com/
 # Licence: MIT License ~ http://opensource.org/licenses/MIT
 # Credit to: exe2bat.exe & https://github.com/acjsec/exe2bam
 
 import os
+import shutil
+import signal
+import subprocess
 import sys
-import urllib
+import tempfile
+import urllib.parse
 from optparse import OptionParser
 
-version = '1.1'
+version = '1.2'
 
 
 ###################
 # Functions start #
 ###################
 
-# Standard error message and exit
+# Use standard error message and exit
 def error_exit(msg):
     error_msg(msg)
     sys.exit(1)
@@ -33,7 +37,7 @@ def success_msg(msg):
     print("\033[01;32m[+]\033[00m %s" % msg)
 
 
-# Standard notification message (Yellow)
+# Verbose message (Yellow)
 def verbose_msg(msg):
     if verbose:
         notification_msg(msg)
@@ -44,9 +48,15 @@ def notification_msg(msg):
     print("\033[01;33m[i]\033[00m %s" % msg)
 
 
-# Banner Information (Blue)
+# Banner information (Blue)
 def banner_msg(msg):
     print("\033[01;34m[*]\033[00m %s" % msg)
+
+
+# CTRL + C
+def signal_handler(signal, frame):
+    print('Quitting...')
+    sys.exit(0)
 
 
 #################
@@ -66,30 +76,31 @@ class BinaryInput:
         self.posh_file = posh_file  # Full path of posh output
         self.exe_filename = ''  # Filename of binary input
         self.bat_filename = ''  # Filename of bat output
-        self.bat_short_file = ''  # Short filename of bat output (8.3 filename)
+        self.short_file = ''  # Short filename of bat output (8.3 filename)
         self.posh_filename = ''  # Filename of posh output
-        self.exe_bin = ''  # Binary input read in
-        self.bin_size = 0  # Binary input size
+        self.exe_bin = b''  # Binary input (data read in)
+        self.bin_size = 0  # Binary input (size of data)
         self.byte_count = 0  # How many loops to read in binary
         self.bat_hex = ''  # Bat hex format output
         self.posh_hex = ''  # PoSh hex format output
 
         # Extract the input filename from the input path (if there was one)
         if self.exe_file:
+            self.exe_file = os.path.abspath(self.exe_file)
             self.exe_filename = os.path.basename(self.exe_file)
         else:
             self.exe_filename = 'binary.exe'
         verbose_msg("Output EXE filename: %s" % self.exe_filename)
+
+        # debug.exe has a limitation when renaming files > 8 characters (8.3 filename).
+        self.short_file = os.path.splitext(self.exe_filename)[0][:8]
+        verbose_msg("Short filename: %s" % self.short_file)
 
         # Are we to make a bat file?
         if self.bat_file:
             # Get just the filename
             self.bat_filename = os.path.basename(self.bat_file)
             verbose_msg("BAT filename: %s" % self.bat_filename)
-
-            # debug.exe has a limitation when renaming files > 8 characters (8.3 filename).
-            self.bat_short_file = os.path.splitext(self.bat_filename)[0][:8]
-            verbose_msg("BAT short filename: %s" % self.bat_short_file)
 
         # Are we to make a posh file?
         if self.posh_file:
@@ -100,17 +111,75 @@ class BinaryInput:
     # Make sure the input file exists
     def check_exe(self):
         if not os.path.isfile(self.exe_file):
-            error_exit("The input file was not found (%s)" % (self.exe_file))
+            error_exit("The input file was not found (%s)" % self.exe_file)
 
     # Make sure the binary size <= 64k when using bat files (limitation with debug.exe)
     def check_bat_size(self):
-        if self.bin_size > 65536:
-            error_msg(
-                "For BAT output, the input file must be under 64k (%d/65536) (DEBUG.exe limitation)" % (self.bin_size))
-            error_msg("[TIP] Try and compress/shrink the input file using strip and/or upx\n")
-            return False
         verbose_msg('Binary file size: %s' % self.bin_size)
+
+        if self.bin_size > 65536:
+            error_msg('Input is larger than 65536 bytes (BATch/DEBUG.exe limitation)')
+            self.compress_exe()
+
+        if self.bin_size > 65536:
+            oversize = self.bin_size - 65536
+            error_msg(
+                "Too large. For BATch output, the input file must be under 64k (%d/65536. %d bytes over) (DEBUG.exe limitation)" % (
+                    self.bin_size, oversize))
+            return False
         return True
+
+    # Try and use strip and/or upx to compress (useful for bat)
+    def compress_exe(self):
+        notification_msg('Attempting to clone and compress')
+        tf = tempfile.NamedTemporaryFile()
+        notification_msg('Creating temporary file %s' % tf.name)
+        try:
+            if (self.exe_file):
+                shutil.copy2(self.exe_file, tf.name)
+            else:
+                with open(tf.name, 'wb') as out:
+                    out.write(self.exe_bin)
+        except:
+            error_exit("A problem occurred while trying to clone into a temporary file")
+
+        self.compress_exe_strip(tf)
+
+        # Don't do it if its not needed. (AV may detect this)
+        if os.path.getsize(tf.name) > 65536:
+            self.compress_exe_upx(tf)
+        else:
+            success_msg("Compression was successful!")
+
+        self.exe_file = os.path.abspath(tf.name)
+        self.check_exe()
+        self.read_bin_file()
+
+    # Use strip to compress (useful for bat)
+    def compress_exe_strip(self, tf):
+        if shutil.which("strip"):
+            notification_msg('Running strip on %s' % tf.name)
+
+            command = "strip -s %s" % tf.name
+            process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
+            process.wait()
+
+            verbose_msg('Binary file size (after strip): %s' % os.path.getsize(tf.name))
+        else:
+            error_msg("Cannot find strip. Skipping...")
+
+    # Use upx to compress (useful for bat). Can be flag'd by AV
+    def compress_exe_upx(self, tf):
+        if shutil.which("upx"):
+            notification_msg('Running UPX on %s' % tf.name)
+
+            command = "upx -9 -q -f %s" % tf.name
+            process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
+            process.wait()
+
+            verbose_msg('Binary file size (after UPX): %s' % os.path.getsize(tf.name))
+        else:
+            error_msg("Cannot find UPX. Skipping...")
 
     # Get the contents of the input file
     def read_bin_file(self):
@@ -145,7 +214,7 @@ class BinaryInput:
         # Read from STDIN
         f = ''
         try:
-            f = sys.stdin.read()
+            f = sys.stdin.buffer.read()
         except:
             error_exit('A problem occurred while reading STDIN')
 
@@ -160,8 +229,7 @@ class BinaryInput:
         self.bin_size = stdin_bytes
 
         # Add the read byte into the byte string
-        for byte in f:
-            self.exe_bin += byte
+        self.exe_bin = f
 
     # Convert binary data to a bat file
     def bin_to_bat(self):
@@ -172,34 +240,17 @@ class BinaryInput:
         if self.check_bat_size() == False:
             return False
 
-        # Counter for how many bytes have been looped
-        byte_count = 0
-
         # Loop through binary bytes
-        for byte in self.exe_bin:
-            # Every hex_len bytes. New line.
-            if ((byte_count % hex_len) == 0):
-                # Is this anything but the first line?
-                if byte_count != 0:
-                    # End the line
-                    self.bat_hex += ' >>%s.hex%s\r\n' % (self.bat_short_file, suffix)
-                # Start a new line
-                self.bat_hex += '%secho e %s >>%s.hex%s\r\necho' % (
-                    prefix, '{:04x}'.format(byte_count + 256), self.bat_short_file, suffix)
-
-            # Add ASCII hex byte
-            self.bat_hex += ' {:02x}'.format(ord(byte))
-
-            # Increment byte counter
-            byte_count += 1
-
-        # Add the last output line
-        self.bat_hex += ' >>%s.hex%s\r\n' % (self.bat_short_file, suffix)
+        for i in range(0, len(self.exe_bin), hex_len):
+            self.bat_hex += '%secho e %s >>%s.hex%s\r\necho ' % (
+                prefix, '{:04x}'.format(i + 256), self.short_file, suffix)
+            self.bat_hex += ' '.join('%02x' % i for i in self.exe_bin[i:i + hex_len])
+            self.bat_hex += ' >>%s.hex%s\r\n' % (self.short_file, suffix)
 
         # Save byte counter (debug.exe needs it)
-        self.byte_count = byte_count
+        self.byte_count = len(self.exe_bin)
 
-        # Finished here successfully
+        # Finished successfully
         return True
 
     # Convert binary data to a PoSh file
@@ -207,77 +258,62 @@ class BinaryInput:
         # Feedback for the user, to know where they are
         verbose_msg('Converting to PoSH')
 
-        # Counter for how many bytes have been looped
-        byte_count = 0
-
         # Loop through binary bytes
-        for byte in self.exe_bin:
-            # Every hex_len bytes. New line.
-            if ((byte_count % hex_len) == 0):
-                self.posh_hex += '"<NUL>'
-                # Is this anything but the first line?
-                if byte_count != 0:
-                    self.posh_hex += '>'
-                # End & start a new line
-                self.posh_hex += '%s%s\r\n%sset /p "=' % (self.posh_filename, suffix, prefix)
+        for i in range(0, len(self.exe_bin), hex_len):
+            self.posh_hex += '%sset /p "=' % (prefix)
+            self.posh_hex += ''.join('%02x' % i for i in self.exe_bin[i:i + hex_len])
+            self.posh_hex += '"<NUL>>%s.hex%s\r\n' % (self.short_file, suffix)
 
-            # Append ASCII hex byte
-            self.posh_hex += '{:02x}'.format(ord(byte))
-
-            # Increment byte counter
-            byte_count += 1
-
-        # Add the last output line
-        self.posh_hex += '"<NUL>>%s%s\r\n' % (self.posh_filename, suffix)
+        # Finished successfully
+        return True
 
     # Write resulting bat file
     def save_bat(self):
         # Create bat file!
-        output = '%secho n %s.dll >%s.hex%s\r\n' % (prefix, self.bat_short_file, self.bat_short_file, suffix)
+        output = '%secho n %s.dll >%s.hex%s\r\n' % (prefix, self.short_file, self.short_file, suffix)
         output += self.bat_hex
-        output += '%secho r cx >>%s.hex%s\r\n' % (prefix, self.bat_short_file, suffix)
-        output += '%secho %s >>%s.hex%s\r\n' % (prefix, '{:04x}'.format(self.byte_count), self.bat_short_file, suffix)
-        output += '%secho w >>%s.hex%s\r\n' % (prefix, self.bat_short_file, suffix)
-        output += '%secho q >>%s.hex%s\r\n' % (prefix, self.bat_short_file, suffix)
-        output += '%sdebug<%s.hex%s\r\n' % (prefix, self.bat_short_file, suffix)
-        output += '%smove %s.dll %s%s\r\n' % (prefix, self.bat_short_file, self.exe_filename, suffix)
-        output += '%sdel /F /Q %s.hex%s\r\n' % (prefix, self.bat_short_file, suffix)
+        output += '%secho r cx >>%s.hex%s\r\n' % (prefix, self.short_file, suffix)
+        output += '%secho %s >>%s.hex%s\r\n' % (prefix, '{:04x}'.format(self.byte_count), self.short_file, suffix)
+        output += '%secho w >>%s.hex%s\r\n' % (prefix, self.short_file, suffix)
+        output += '%secho q >>%s.hex%s\r\n' % (prefix, self.short_file, suffix)
+        output += '%sdebug<%s.hex%s\r\n' % (prefix, self.short_file, suffix)
+        output += '%smove %s.dll %s%s\r\n' % (prefix, self.short_file, self.exe_filename, suffix)
+        output += '%sdel /F /Q %s.hex%s\r\n' % (prefix, self.short_file, suffix)
         output += '%sstart /b %s%s\r\n' % (prefix, self.exe_filename, suffix)
 
         # Write file out
-        self.write_file(self.bat_file, output)
+        self.write_file(self.bat_file, output, "BAT")
 
     # Write resulting PoSh file
     def save_posh(self):
         # Create PoSh file!
-        output = '%sset /p "=' % prefix
-        output += self.posh_hex
-        output += "%spowershell -Command \"$hex=Get-Content -readcount 0 -path './%s';" % (prefix, self.posh_filename)
+        output = self.posh_hex
+        output += "%spowershell -Command \"$hex=Get-Content -readcount 0 -path './%s.hex';" % (prefix, self.short_file)
         output += "$len=$hex[0].length;"
         output += "$bin=New-Object byte[] ($len/2);"
         output += "$x=0;"
         output += "for ($i=0;$i -le $len-1;$i+=2)"
         output += "{$bin[$x]=[byte]::Parse($hex.Substring($i,2),[System.Globalization.NumberStyles]::HexNumber);"
         output += "$x+=1};"
-        output += "set-content -encoding byte '%s' -value $bin;\"%s\r\n" % (self.exe_filename, suffix)
-        output += "%sdel /F /Q %s%s\r\n" % (prefix, self.posh_filename, suffix)
+        output += "set-content -encoding byte '%s.hex' -value $bin;\"%s\r\n" % (self.short_file, suffix)
+        output += "%sdel /F /Q %s.hex%s\r\n" % (prefix, self.short_file, suffix)
         output += "%sstart /b %s%s\r\n" % (prefix, self.exe_filename, suffix)
 
         # Write file out
-        self.write_file(self.posh_file, output)
+        self.write_file(self.posh_file, output, "PoSh")
 
     # Write output
-    def write_file(self, filepath, contents):
+    def write_file(self, filepath, contents, type):
         # Do we need to HTML encode it?
         if encode:
-            contents = urllib.quote_plus(contents).replace("%0D%0A", "\r\n")
+            contents = urllib.parse.quote_plus(contents).replace("%0D%0A", "\r\n")
 
         # Try and write the file out to disk
         try:
             f = open(filepath, 'w')
             f.write(contents)
             f.close
-            success_msg("Successfully wrote: %s" % filepath)
+            success_msg("Successfully wrote (%s): %s" % (type, os.path.abspath(filepath)))
         except:
             error_msg("A problem occurred while writing (%s)" % filepath)
 
@@ -306,6 +342,9 @@ class BinaryInput:
 #########################
 
 
+signal.signal(signal.SIGINT, signal_handler)
+
+
 ################
 # Main Program #
 ################
@@ -314,7 +353,6 @@ class BinaryInput:
 if __name__ == "__main__":
     # Display banner
     banner_msg('exe2hex v%s' % version)
-    print ''
 
     # Configure command-line option parsing
     parser = OptionParser()
@@ -325,25 +363,25 @@ if __name__ == "__main__":
                       help="Read from STDIN", action="store_true", metavar="STDIN")
 
     parser.add_option("-b", dest="bat",
-                      help="BAT output file (DEBUG.exe method)", metavar="BAT")
+                      help="BAT output file (DEBUG.exe method - x86)", metavar="BAT")
 
     parser.add_option("-p", dest="posh",
-                      help="PoSh output file (PowerShell method)", metavar="POSH")
+                      help="PoSh output file (PowerShell method - x86/x64)", metavar="POSH")
 
     parser.add_option("-e", dest="encode", default=False,
-                      help="HTML encode the output?", action="store_true", metavar="ENCODE")
+                      help="URL encode the output", action="store_true", metavar="ENCODE")
 
     parser.add_option("-r", dest="prefix", default='',
-                      help="pRefix - text to add before the command", metavar="TEXT")
+                      help="pRefix - text to add before the command on each line", metavar="TEXT")
 
     parser.add_option("-f", dest="suffix", default='',
-                      help="suFfix - text to add after the command", metavar="TEXT")
+                      help="suFfix - text to add after the command on each line", metavar="TEXT")
 
     parser.add_option("-l", dest="hex_len", default=128,
                       help="Maximum hex values per line", metavar="INT")
 
     parser.add_option("-v", dest="verbose", default=False,
-                      help="Enable verbose output", action="store_true", metavar="VERBOSE")
+                      help="Enable verbose mode", action="store_true", metavar="VERBOSE")
 
     # Store command-line options and arguments in variables
     (options, args) = parser.parse_args()
@@ -354,27 +392,40 @@ if __name__ == "__main__":
     encode = options.encode
     prefix = options.prefix
     suffix = options.suffix
-    hex_len = int(options.hex_len)
+    try:
+        hex_len = int(options.hex_len)
+    except:
+        error_exit('Invalid length for -l %s' % options.hex_len)
     verbose = options.verbose
 
-    # Is there any arguments?
-    if len(sys.argv) <= 1:
-        banner_msg("Encodes a executable binary file into ASCII text format (Windows .cmd file)")
-        banner_msg("Restores using DEBUG.exe (BATch - x86) and/or PowerShell (PoSh - x86/x64)")
-        print ''
-        banner_msg("Quick usage:")
-        banner_msg(" + Input with -s or -x")
-        banner_msg(" + Output with -b and/or -p")
-        banner_msg("Example:")
-        banner_msg(" $ %s -x /usr/share/windows-binaries/nc.exe -b /var/www/html/nc.txt" % sys.argv[0])
-        banner_msg(" $ cat /usr/share/windows-binaries/whoami.exe | %s -s -b who_debug.bat -p who_ps.cmd" % sys.argv[0])
-        print ''
+    # Being helpful if they haven't read -h...
+    if len(sys.argv) == 2:
+        exe = sys.argv[1]
+        print('')
+        notification_msg("Next time use \"-x\".   e.g.: %s -x %s" % (sys.argv[0], exe))
+        print('')
+    # Are there any arguments?
+    elif len(sys.argv) <= 1:
+        print('')
+        print("Encodes a executable binary file into ASCII text format")
+        print("Restores using DEBUG.exe (BATch - x86) and/or PowerShell (PoSh - x86/x64)")
+        print('')
+        print("Quick guide:")
+        print(" + Input binary file with -s or -x")
+        print(" + Output with -b and/or -p")
+        print("Example:")
+        print(" $ %s -x /usr/share/windows-binaries/sbd.exe" % sys.argv[0])
+        print(" $ %s -x /usr/share/windows-binaries/nc.exe -b /var/www/html/nc.txt" % sys.argv[0])
+        print(" $ cat /usr/share/windows-binaries/whoami.exe | %s -s -b debug.bat -p ps.cmd" % sys.argv[0])
+        print('')
+        print('--- --- --- --- --- --- --- --- --- --- --- --- --- --- ---')
+        print('')
         parser.print_help()
         sys.exit(1)
 
     # Any input methods?
     if exe == None and stdin == None:
-        error_exit('Missing a executable file or STDIN input')
+        error_exit("Missing a executable file ('-x <file>') or STDIN input ('-s')")
 
     # Too many input methods?
     if exe != None and stdin != None:
@@ -382,11 +433,18 @@ if __name__ == "__main__":
 
     # Any output methods?
     if bat == None and posh == None:
-        error_exit('A BAT and/or PoSh output file must be specified')
+        exe_filename = os.path.splitext(os.path.basename(exe))[0]
+        bat = '%s.bat' % os.path.abspath(exe_filename)
+        posh = '%s.cmd' % os.path.abspath(exe_filename)
+        notification_msg("Outputting to %s (BATch) and %s (PoSh)" % (bat, posh))
 
     # Do the output files clash?
     if bat == posh:
-        error_exit('Cannot use the same filename for both BAT and PoSh')
+        error_exit('Cannot use the same output filename for both BAT and PoSh')
+
+    # Is someone going to overwrite what they put in?
+    if not stdin and (exe == bat or exe == posh):
+        error_exit('Cannot use the same input as output')
 
     # Read in file information
     x = BinaryInput(exe, bat, posh)
