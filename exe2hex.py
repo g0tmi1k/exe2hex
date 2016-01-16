@@ -295,7 +295,7 @@ class BinaryInput:
         output += "for ($i=0;$i -le $len-1;$i+=2)"
         output += "{$bin[$x]=[byte]::Parse($hex.Substring($i,2),[System.Globalization.NumberStyles]::HexNumber);"
         output += "$x+=1};"
-        output += "set-content -encoding byte '%s.hex' -value $bin;\"%s\r\n" % (self.short_file, suffix)
+        output += "set-content -encoding byte '%s' -value $bin;\"%s\r\n" % (self.exe_filename, suffix)
         output += "%sdel /F /Q %s.hex%s\r\n" % (prefix, self.short_file, suffix)
         output += "%sstart /b %s%s\r\n" % (prefix, self.exe_filename, suffix)
 
