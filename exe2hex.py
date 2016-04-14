@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Name: exe2hex v1.3 (2016-01-25)
+# Name: exe2hex v1.4 (2016-04-14)
 # Author: g0tmilk ~ https://blog.g0tmi1k.com/
 # Licence: MIT License ~ http://opensource.org/licenses/MIT
 # Credit to: exe2bat.exe & https://github.com/acjsec/exe2bam
@@ -16,7 +16,7 @@ from optparse import OptionParser
 
 import urllib.parse
 
-version = '1.3'
+version = '1.4'
 
 
 ###################
@@ -73,13 +73,15 @@ def signal_handler(signal, frame):
 class BinaryInput:
     # Initialization object configuration
     def __init__(self, exe_file, bat_file, posh_file):
-        self.exe_file = exe_file  # Full path of binary input
-        self.bat_file = bat_file  # Full path of bat output
-        self.posh_file = posh_file  # Full path of posh output
+        self.exe_file = exe_file  # Full path of the binary input
+        self.bat_file = bat_file  # Full path of the bat file out
+        self.posh_file = posh_file  # Full path of the posh file out
+        self.telnet_file = None  # Full path of the telnet file out
         self.exe_filename = ''  # Filename of binary input
         self.bat_filename = ''  # Filename of bat output
         self.short_file = ''  # Short filename of bat output (8.3 filename)
         self.posh_filename = ''  # Filename of posh output
+        self.telnet_filename = ''  # Filename of telnet output
         self.exe_bin = b''  # Binary input (data read in)
         self.bin_size = 0  # Binary input (size of data)
         self.byte_count = 0  # How many loops to read in binary
@@ -91,7 +93,7 @@ class BinaryInput:
             self.exe_file = os.path.abspath(self.exe_file)
             self.exe_filename = os.path.basename(self.exe_file)
         else:
-            self.exe_filename = 'binary.exe'
+            self.exe_filename = "binary.exe"
         verbose_msg("Output EXE filename: %s" % self.exe_filename)
 
         # debug.exe has a limitation when renaming files > 8 characters (8.3 filename).
@@ -108,7 +110,13 @@ class BinaryInput:
         if self.posh_file:
             # Get just the filename
             self.posh_filename = os.path.basename(self.posh_file)
-            verbose_msg("PoSh filename: %s" % self.bat_filename)
+            verbose_msg("PoSh filename: %s" % self.posh_filename)
+
+        # Are we to make a telnet file?
+        if telnet:
+            self.telnet_filename = "%s-telnet" % (self.short_file)
+            self.telnet_file = os.path.abspath(self.bat_file.replace(self.bat_filename, self.telnet_filename))
+            verbose_msg("Telnet filename: %s" % self.telnet_filename)
 
     # Make sure the input file exists
     def check_exe(self):
@@ -294,6 +302,37 @@ class BinaryInput:
         # Finish off the BATch file (incase there's multiple parts
         self.finish_bat(x)
 
+    # Write resulting bat file
+    def finish_bat(self, loop=0):
+        # Is there more than one part? Going to be using this for the copy fu
+        if loop > 0:
+            # Loop them all, start with the first
+            parts = '%s.0' % self.short_file
+            for i in range(1, loop + 1, 1):
+                parts += '+%s.%s' % (self.short_file, i)
+
+            # Command fu, to join all the parts together
+            output = '%scopy /B /Y %s %s%s\r\n' % (prefix, parts, self.exe_filename, suffix)
+        else:
+            # Single file, just move it
+            output = '%smove /Y %s.%s %s%s\r\n' % (prefix, self.short_file, loop, self.exe_filename, suffix)
+
+        # Select every temp file used, so it can be deleted
+        parts = '%s.hex' % self.short_file
+        for i in range(0, loop + 1, 1):
+            parts += ' %s.%s' % (self.short_file, i)
+
+        # Some times the del command will not remove it (as it is still in use), so let's just null it!
+        output += '%secho. >%s.hex%s\r\n' % (prefix, self.short_file, suffix)
+
+        # The final few things
+        output += '%sdel /F /Q %s%s\r\n' % (prefix, parts, suffix)
+        if self.telnet_file == None:
+            output += '%sstart /wait /b %s%s\r\n' % (prefix, self.exe_filename, suffix)
+
+        # Write the file out
+        self.write_file(self.bat_file, output, "BATch", False)
+
     # Convert binary data to a PoSh file
     def bin_to_posh(self):
         # Feedback for the user, to know where they are
@@ -322,35 +361,6 @@ class BinaryInput:
         else:
             self.write_file(self.bat_file, output, "BATch", True)
 
-    # Write resulting bat file
-    def finish_bat(self, loop=0):
-        # Is there more than one part? Going to be using this for the copy fu
-        if loop > 0:
-            # Loop them all, start with the first
-            parts = '%s.0' % self.short_file
-            for i in range(1, loop + 1, 1):
-                parts += '+%s.%s' % (self.short_file, i)
-
-            # Command fu, to join all the parts together
-            output = '%scopy /b %s %s%s\r\n' % (prefix, parts, self.exe_filename, suffix)
-        else:
-            # Single file, just move it
-            output = '%smove %s.%s %s%s\r\n' % (prefix, self.short_file, loop, self.exe_filename, suffix)
-
-        # Select every temp file used, so it can be deleted
-        parts = '%s.hex' % self.short_file
-        for i in range(0, loop + 1, 1):
-            parts += ' %s.%s' % (self.short_file, i)
-
-        # Some times the del command will not remove it (still in use), so null it!
-        output += '%secho .>%s.hex%s\r\n' % (prefix, self.short_file, suffix)
-
-        # The final few things
-        output += '%sdel /F /Q %s%s\r\n' % (prefix, parts, suffix)
-        output += '%sstart /b %s%s\r\n' % (prefix, self.exe_filename, suffix)
-
-        self.write_file(self.bat_file, output, "BATch", False)
-
     # Write resulting PoSh file
     def save_posh(self):
         # Create PoSh file!
@@ -368,6 +378,82 @@ class BinaryInput:
 
         # Write file out
         self.write_file(self.posh_file, output, "PoSh", True)
+
+    # Write resulting telnet file
+    def save_telnet(self):
+        output = ("""#!/usr/bin/expect -f
+set timeout 10
+set ip [lindex $argv 0]
+set port 21
+set username [lindex $argv 1]
+set password [lindex $argv 2]
+set file_out %s
+set file_in %s
+set prompt "C:"
+
+## Read in command arguments
+if { [llength $argv] < 3 } {
+  set name [file tail $argv0]
+  send_user "Usage: ./$name <ip> <username> <password>\\n"; exit 1
+}
+## Check to see if the input file is there
+if { ! [file exist $file_in] } {
+  send_user "\\n\\n\\[!\\] $file_in is missing\\n"; exit 1
+}
+## login ~ #spawn telnet -l $username $ip
+spawn telnet $ip
+## If there is a user name prompt, login (if -l <user> fails)
+expect "login: " { send "$username\\r" }
+## Wait for password prompt
+expect {
+  "password: " { send "$password\\r" }
+  timeout { send_user "\\n\\n\\[!\\] Failed to get password prompt\\n"; exit 1 }
+}
+## Move to commonly writable folder
+expect "$prompt" { send "cd %%TEMP%%\\r" }
+## Test write access
+set rand [ expr floor( rand() * 999900 ) ]
+expect "$prompt" { send "echo $rand > $file_out\\r" }
+expect "$prompt" { send "type $file_out\\r" }
+expect {
+  "$rand" { send_user "\\n\\n\\[i\\] Writable folder!\\n" }
+  timeout { send_user "\\n\\n\\[!\\] Failed to write out\\n"; exit 1 }
+}
+## Restore prompt
+expect "$prompt" { send "\\r\\n" }
+## Clean up
+expect "$prompt" { send "del /F $file_out\\r" }
+## Read in our file
+set f [open "$file_in"]
+set data [read $f]
+close $f
+## Set counters
+set i 0
+set total [llength [split $data \\n]]
+## For each line, wait for a prompt
+foreach line [ split $data \\n ] {
+  ## Skip over empty lines
+  if { $line eq {} } continue
+  ## Increase counter
+  incr i
+  ## Double carriage return here (don't ask)
+  expect "$prompt" { send "$line\\r\\r" }
+  ## Fix a telnet issues due to its ouput (don't ask) - progress isn't required
+  expect "$prompt" { send_user "   (Progress: $i/$total)\\n" }
+}
+## Restore prompt
+expect "$prompt" { send "\\r\\n" }
+## Start
+expect "$prompt" { send "start /wait /b %s" }
+## Give telnet control back to user afterwards
+interact
+""") % (self.bat_filename, self.bat_file, self.exe_filename)
+
+        # Write file out
+        self.write_file(self.telnet_file, output, "Expect", True)
+
+        # Make the file executable
+        os.chmod(self.telnet_file, 0o755)
 
     # Write output
     def write_file(self, filepath, contents, type, overwrite=True):
@@ -397,16 +483,18 @@ class BinaryInput:
         if self.exe_file != None:
             # If there is a EXE input, check its valid
             self.check_exe()
+            # If we are to compress, now's the time!
             if compress:
                 self.compress_exe()
             self.read_bin_file()
         else:
             self.read_bin_stdin()
+            # If we are to compress, now's the time & re-read it in
             if compress:
                 self.compress_exe()
                 self.read_bin_file()
 
-        # Make bat file
+        # Make BATch file
         if self.bat_file != None:
             self.check_bat_size()
             self.bin_to_bat()
@@ -415,6 +503,10 @@ class BinaryInput:
         if self.posh_file != None:
             self.bin_to_posh()
             self.save_posh()
+
+        # Make Expect/Telnet file
+        if self.telnet_file != None:
+            self.save_telnet()
 
 
 #########################
@@ -459,12 +551,16 @@ if __name__ == "__main__":
     parser.add_option("-l", dest="hex_len", default=128,
                       help="Maximum HEX values per line", metavar="INT")
 
-    parser.add_option("-v", dest="verbose", default=False,
-                      help="Enable verbose mode", action="store_true", metavar="VERBOSE")
-
     parser.add_option("-c", dest="compress", default=False,
                       help="Clones and compress the file before converting (-cc for higher compression)",
                       action="count", metavar="COMPRESS")
+
+    parser.add_option("-t", dest="telnet", default=False,
+                      help="Create a Expect file, to automate to Telnet session.",
+                      action="store_true", metavar="TELNET")
+
+    parser.add_option("-v", dest="verbose", default=False,
+                      help="Enable verbose mode", action="store_true", metavar="VERBOSE")
 
     # Store command-line options and arguments in variables
     (options, args) = parser.parse_args()
@@ -479,8 +575,9 @@ if __name__ == "__main__":
         hex_len = int(options.hex_len)
     except:
         error_exit('Invalid length for -l %s' % options.hex_len)
-    verbose = options.verbose
     compress = options.compress
+    telnet = options.telnet
+    verbose = options.verbose
 
     # Being helpful if they haven't read -h...
     if len(sys.argv) == 2:
@@ -509,7 +606,7 @@ if __name__ == "__main__":
 
     # Any input methods?
     if exe == None and stdin == None:
-        error_exit("Missing a executable file ('-x <file>') or STDIN input ('-s')")
+        error_exit("Missing a executable file (-x <file>) or STDIN input (-s)")
 
     # Too many input methods?
     if exe != None and stdin != None:
@@ -524,11 +621,15 @@ if __name__ == "__main__":
 
     # Do the output files clash?
     if bat == posh:
-        error_exit('Cannot use the same output filename for both BAT and PoSh')
+        error_exit('Cannot use the same output filename for both BATch (-b) and PoSh (-p)')
 
     # Is someone going to overwrite what they put in?
-    if not stdin and (exe == bat or exe == posh):
+    if stdin != None and (exe == bat or exe == posh):
         error_exit('Cannot use the same input as output')
+
+    # Are we missing .bat when doing telnet?
+    if bat == None and telnet != None:
+        error_exit("Need a BATch file (-b) to use Telnet (-t)")
 
     # Read in file information
     x = BinaryInput(exe, bat, posh)
