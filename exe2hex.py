@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Name: exe2hex v1.4 (2016-04-14)
+# Name: exe2hex v1.4.1 (2016-06-30) ~ Codename: hEXE
 # Author: g0tmilk ~ https://blog.g0tmi1k.com/
 # Licence: MIT License ~ http://opensource.org/licenses/MIT
 # Credit to: exe2bat.exe & https://github.com/acjsec/exe2bam
@@ -16,7 +16,7 @@ from optparse import OptionParser
 
 import urllib.parse
 
-version = '1.4'
+version = '1.4.1'
 
 
 ###################
@@ -328,7 +328,7 @@ class BinaryInput:
         # The final few things
         output += '%sdel /F /Q %s%s\r\n' % (prefix, parts, suffix)
         if self.telnet_file == None:
-            output += '%sstart /wait /b %s%s\r\n' % (prefix, self.exe_filename, suffix)
+            output += '%sstart /wait /b %s%s\r\n\r\n' % (prefix, self.exe_filename, suffix)
 
         # Write the file out
         self.write_file(self.bat_file, output, "BATch", False)
@@ -338,11 +338,15 @@ class BinaryInput:
         # Feedback for the user, to know where they are
         verbose_msg('Converting to PoSH')
 
+        # Null any previous files
+        #self.posh_hex += '%secho|set /p="">%s.hex%s\r\n' % (prefix, self.short_file, suffix)
+        self.posh_hex += '%secho|set /p="">%s.hex%s\r\n' % (prefix, self.short_file, suffix)
+
         # Loop through binary bytes
         for i in range(0, len(self.exe_bin), hex_len):
-            self.posh_hex += '%sset /p "=' % (prefix)
+            self.posh_hex += '%secho|set /p="' % (prefix)
             self.posh_hex += ''.join('%02x' % i for i in self.exe_bin[i:i + hex_len])
-            self.posh_hex += '"<NUL>>%s.hex%s\r\n' % (self.short_file, suffix)
+            self.posh_hex += '">>%s.hex%s\r\n' % (self.short_file, suffix)
 
     # Write resulting bat file
     def save_bat(self, loop=0):
@@ -365,16 +369,16 @@ class BinaryInput:
     def save_posh(self):
         # Create PoSh file!
         output = self.posh_hex
-        output += "%spowershell -Command \"$hex=Get-Content -readcount 0 -path './%s.hex';" % (prefix, self.short_file)
-        output += "$len=$hex[0].length;"
-        output += "$bin=New-Object byte[] ($len/2);"
+        output += "%spowershell -Command \"$h=Get-Content -readcount 0 -path './%s.hex';" % (prefix, self.short_file)
+        output += "$l=$h[0].length;"
+        output += "$b=New-Object byte[] ($l/2);"
         output += "$x=0;"
-        output += "for ($i=0;$i -le $len-1;$i+=2)"
-        output += "{$bin[$x]=[byte]::Parse($hex.Substring($i,2),[System.Globalization.NumberStyles]::HexNumber);"
+        output += "for ($i=0;$i -le $l-1;$i+=2)"
+        output += "{$b[$x]=[byte]::Parse($h[0].Substring($i,2),[System.Globalization.NumberStyles]::HexNumber);"
         output += "$x+=1};"
-        output += "set-content -encoding byte '%s' -value $bin;\"%s\r\n" % (self.exe_filename, suffix)
+        output += "set-content -encoding byte '%s' -value $b;\"%s\r\n" % (self.exe_filename, suffix)
         output += "%sdel /F /Q %s.hex%s\r\n" % (prefix, self.short_file, suffix)
-        output += "%sstart /b %s%s\r\n" % (prefix, self.exe_filename, suffix)
+        output += "%sstart /b %s%s\r\n\r\n" % (prefix, self.exe_filename, suffix)
 
         # Write file out
         self.write_file(self.posh_file, output, "PoSh", True)
@@ -628,7 +632,7 @@ if __name__ == "__main__":
         error_exit('Cannot use the same input as output')
 
     # Are we missing .bat when doing telnet?
-    if bat == None and telnet != None:
+    if bat == None and telnet != False:
         error_exit("Need a BATch file (-b) to use Telnet (-t)")
 
     # Read in file information
