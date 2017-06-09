@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Name: exe2hex v1.4.1 (2016-06-30) ~ Codename: hEXE
+# Name: exe2hex v1.5 (2017-06-09) ~ Codename: hEXE
 # Author: g0tmilk ~ https://blog.g0tmi1k.com/
 # Licence: MIT License ~ http://opensource.org/licenses/MIT
 # Credit to: exe2bat.exe & https://github.com/acjsec/exe2bam
@@ -16,7 +16,7 @@ from optparse import OptionParser
 
 import urllib.parse
 
-version = '1.4.1'
+version = '1.5'
 
 
 ###################
@@ -77,11 +77,13 @@ class BinaryInput:
         self.bat_file = bat_file  # Full path of the bat file out
         self.posh_file = posh_file  # Full path of the posh file out
         self.telnet_file = None  # Full path of the telnet file out
+        self.winexe_file = None  # Full path of the winexe file out
         self.exe_filename = ""  # Filename of binary input
         self.bat_filename = ""  # Filename of bat output
         self.short_file = ""  # Short filename of bat output (8.3 filename)
         self.posh_filename = ""  # Filename of posh output
         self.telnet_filename = ""  # Filename of telnet output
+        self.winexe_filename = ""  # Filename of winexe output
         self.exe_bin = b''  # Binary input (data read in)
         self.bin_size = 0  # Binary input (size of data)
         self.byte_count = 0  # How many loops to read in binary
@@ -111,12 +113,6 @@ class BinaryInput:
             # Get just the filename
             self.posh_filename = os.path.basename(self.posh_file)
             verbose_msg("PoSh filename: %s" % self.posh_filename)
-
-        # Are we to make a telnet file?
-        if telnet:
-            self.telnet_filename = "%s-telnet" % (self.short_file)
-            self.telnet_file = os.path.abspath(self.bat_file.replace(self.bat_filename, self.telnet_filename))
-            verbose_msg("Telnet filename: %s" % self.telnet_filename)
 
     # Make sure the input file exists
     def check_exe(self):
@@ -393,50 +389,89 @@ class BinaryInput:
         # Write file out
         self.write_file(self.posh_file, output, "PoSh", True)
 
-    # Write resulting telnet file
-    def save_telnet(self):
+    # Write resulting expect file
+    def save_expect(self, mode='', type=''):
+        port = '0'
+        cmd = ""
+        file = ""
+        infilename = ""
+        infile = ""
+
+        if mode == "telnet":
+            port = "23"
+            #cmd = "telnet -l $username $ip"
+            cmd = "telnet $ip"
+            file = self.telnet_file
+            verbose_msg("Telnet filename: %s" % self.telnet_filename)
+        elif mode == "winexe":
+            cmd = "winexe -U $username%$password //$ip cmd.exe"
+            file = self.winexe_file
+            verbose_msg("WinEXE filename: %s" % self.winexe_filename)
+        else:
+            error_exit("Unexpected mode: %s" % mode)
+
+        if type == "bat":
+            infilename = self.bat_filename
+            infile = self.bat_file
+        elif type == "posh":
+            infilename = self.posh_filename
+            infile = self.posh_file
+        else:
+            error_exit("Unexpected type: %s" % type)
+
         output = ("""#!/usr/bin/expect -f
 set timeout 10
 set ip [lindex $argv 0]
-set port 21
+#set port {0}
 set username [lindex $argv 1]
 set password [lindex $argv 2]
-set file_out %s
-set file_in %s
+set file_out {1}
+set file_in {2}
 set prompt "C:"
-
 ## Read in command arguments
-if { [llength $argv] < 3 } {
+if {{ [llength $argv] < 3 }} {{
   set name [file tail $argv0]
   send_user "Usage: ./$name <ip> <username> <password>\\n"; exit 1
-}
+}}
 ## Check to see if the input file is there
-if { ! [file exist $file_in] } {
+if {{ ! [file exist $file_in] }} {{
   send_user "\\n\\n\\[!\\] $file_in is missing\\n"; exit 1
-}
-## login ~ #spawn telnet -l $username $ip
-spawn telnet $ip
-## If there is a user name prompt, login (if -l <user> fails)
+}}
+## Connect
+send_user "\\n"
+spawn {3}
+send_user "\\n"
+""").format(port, infilename, infile, cmd)
+
+        if mode == "telnet":
+            output += ("""## If there is a user name prompt (as -l doesn't always work)
 expect "login: " { send "$username\\r" }
 ## Wait for password prompt
 expect {
   "password: " { send "$password\\r" }
   timeout { send_user "\\n\\n\\[!\\] Failed to get password prompt\\n"; exit 1 }
 }
-## Move to commonly writable folder
-expect "$prompt" { send "cd %%TEMP%%\\r" }
+""")
+
+        output += ("""## Move to a commonly writeable folder
+expect "$prompt" { send "cd %TEMP%\\r" }
 ## Test write access
 set rand [ expr floor( rand() * 999900 ) ]
-expect "$prompt" { send "echo $rand > $file_out\\r" }
+expect "$prompt" { send "echo $rand>$file_out\\r" }
 expect "$prompt" { send "type $file_out\\r" }
 expect {
-  "$rand" { send_user "\\n\\n\\[i\\] Writable folder!\\n" }
+  "$rand" { send_user "\\n\\n\\[i\\] Writeable folder!\\n" }
   timeout { send_user "\\n\\n\\[!\\] Failed to write out\\n"; exit 1 }
 }
-## Restore prompt
+""")
+
+        if mode == "telnet":
+            output += ("""## Restore prompt
 expect "$prompt" { send "\\r\\n" }
-## Clean up
-expect "$prompt" { send "del /F $file_out\\r" }
+""")
+
+        output += ("""## Clean up
+expect "$prompt" {{ send "del /F $file_out\\r" }}
 ## Read in our file
 set f [open "$file_in"]
 set data [read $f]
@@ -445,29 +480,36 @@ close $f
 set i 0
 set total [llength [split $data \\n]]
 ## For each line, wait for a prompt
-foreach line [ split $data \\n ] {
+foreach line [ split $data \\n ] {{
   ## Skip over empty lines
-  if { $line eq {} } continue
+  if {{ $line eq {{}} }} continue
   ## Increase counter
   incr i
   ## Double carriage return here (don't ask)
-  expect "$prompt" { send "$line\\r\\r" }
-  ## Fix a telnet issues due to its ouput (don't ask) - progress isn't required
-  expect "$prompt" { send_user "   (Progress: $i/$total)\\n" }
-}
-## Restore prompt
-expect "$prompt" { send "\\r\\n" }
+  expect "$prompt" {{ send "$line\\r\\r" }}
+  ## Fix a telnet issues due to its output (don't ask) - progress isn't required
+  expect "$prompt" {{ send_user "   (Progress: $i/$total)\\n" }}
+}}
+## Show output
+#expect "$prompt" {{ send "dir {0}" }}
+send_user "\\n\\n\[i\] Done\\n"
 ## Start
-expect "$prompt" { send "start /wait /b %s" }
-## Give telnet control back to user afterwards
-interact
-""") % (self.bat_filename, self.bat_file, self.exe_filename)
+#expect "$prompt" {{ send "start /wait /b {0}" }}
+""").format(self.exe_filename)
 
+        if mode == "telnet":
+            output += ("""## Restore prompt
+expect "$prompt" { send "\\r\\n" }
+""")
+
+        output += ("""## Give control back to user afterwards
+interact
+""")
         # Write file out
-        self.write_file(self.telnet_file, output, "Expect", True)
+        self.write_file(file, output, "Expect", True)
 
         # Make the file executable
-        os.chmod(self.telnet_file, 0o755)
+        os.chmod(file, 0o755)
 
     # Write output
     def write_file(self, filepath, contents, type, overwrite=True):
@@ -519,9 +561,30 @@ interact
             self.save_posh()
 
         # Make Expect/Telnet file
-        if self.telnet_file != None:
-            self.save_telnet()
+        if telnet:
+            # Are we to make a telnet file (bat)?
+            if self.bat_file != None:
+                self.telnet_filename = "%s-bat-telnet" % (self.short_file)
+                self.telnet_file = os.path.abspath(self.bat_file.replace(self.bat_filename, self.telnet_filename))
+                self.save_expect('telnet', 'bat')
+            # Are we to make a telnet file (PoSH)?
+            if self.posh_file != None:
+                self.telnet_filename = "%s-posh-telnet" % (self.short_file)
+                self.telnet_file = os.path.abspath(self.posh_file.replace(self.posh_filename, self.telnet_filename))
+                self.save_expect('telnet', 'posh')
 
+        # Make Expect/WinEXE file
+        if winexe:
+            # Are we to make a winexe file (bat)?
+            if self.bat_file != None:
+                self.winexe_filename = "%s-bat-winexe" % (self.short_file)
+                self.winexe_file = os.path.abspath(self.bat_file.replace(self.bat_filename, self.winexe_filename))
+                self.save_expect('winexe', 'bat')
+            # Are we to make a winexe file (PoSH)?
+            if self.posh_file != None:
+                self.winexe_filename = "%s-posh-winexe" % (self.short_file)
+                self.winexe_file = os.path.abspath(self.posh_file.replace(self.posh_filename, self.winexe_filename))
+                self.save_expect('winexe', 'posh')
 
 #########################
 # End BinaryInput class #
@@ -574,6 +637,10 @@ if __name__ == "__main__":
                       help="Create a Expect file, to automate to a Telnet session.",
                       action="store_true", metavar="TELNET")
 
+    parser.add_option("-w", dest="winexe", default=False,
+                      help="Create a Expect file, to automate to a WinEXE session.",
+                      action="store_true", metavar="WINEXE")
+
     parser.add_option("-v", dest="verbose", default=False,
                       help="Enable verbose mode", action="store_true", metavar="VERBOSE")
 
@@ -592,6 +659,7 @@ if __name__ == "__main__":
         error_exit('Invalid length for -l %s' % options.hex_len)
     compress = options.compress
     telnet = options.telnet
+    winexe = options.winexe
     verbose = options.verbose
 
     # Being helpful if they haven't read -h...
@@ -641,10 +709,6 @@ if __name__ == "__main__":
     # Is someone going to overwrite what they put in?
     if stdin != None and (exe == bat or exe == posh):
         error_exit('Cannot use the same input as output')
-
-    # Are we missing .bat when doing telnet?
-    if bat == None and telnet != False:
-        error_exit("Need a BATch file (-b) to use Telnet (-t)")
 
     # Read in file information
     x = BinaryInput(exe, bat, posh)
