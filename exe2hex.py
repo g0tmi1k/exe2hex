@@ -327,8 +327,9 @@ class BinaryInput:
 
         # The final few things
         output += '%sdel /F /Q %s%s\r\n' % (prefix, parts, suffix)
-        if self.telnet_file == None:
-            output += '%sstart /wait /b %s%s\r\n\r\n' % (prefix, self.exe_filename, suffix)
+        output += '%sdir %s%s\r\n\r\n' % (prefix, self.exe_filename, suffix)
+        #if self.telnet_file == None:
+        #    output += '%sstart /wait /b %s%s\r\n\r\n' % (prefix, self.exe_filename, suffix)
 
         # Write the file out
         self.write_file(self.bat_file, output, "BATch", False)
@@ -351,7 +352,10 @@ class BinaryInput:
     # Write resulting bat file
     def save_bat(self, loop=0):
         # Create bat file!
-        output = '%secho n %s.%s>%s.hex%s\r\n' % (prefix, self.short_file, loop, self.short_file, suffix)
+        output = ""
+        output += '%sdebug /?%s\r\n' % (prefix, suffix)
+        output += '%sif NOT %%ERRORLEVEL%% == 0 echo &echo &echo &echo **** **** **** **** ****&echo *** Missing DEBUG.exe ***&echo **** **** **** **** ****&exit /b%s\r\n' % (prefix, suffix)
+        output += '%secho n %s.%s>%s.hex%s\r\n' % (prefix, self.short_file, loop, self.short_file, suffix)
         output += self.bat_hex
         output += '%secho r cx>>%s.hex%s\r\n' % (prefix, self.short_file, suffix)
         output += '%secho %s>>%s.hex%s\r\n' % (prefix, '{:04x}'.format(self.byte_count), self.short_file, suffix)
@@ -368,17 +372,23 @@ class BinaryInput:
     # Write resulting PoSh file
     def save_posh(self):
         # Create PoSh file!
-        output = self.posh_hex
-        output += "%spowershell -Command \"$h=Get-Content -readcount 0 -path './%s.hex';" % (prefix, self.short_file)
+        output = ""
+        #output += '%spowershell /?%s\r\n' % (prefix, suffix)
+        #output += '%sif NOT %%ERRORLEVEL%% == 0 echo &echo &echo &echo **** **** **** **** ****&echo *** Missing Powershell ***&echo **** **** **** **** ****&exit /b%s\r\n' % (prefix, suffix)
+        output += self.posh_hex
+        output += "%spowershell -Command \"" % (prefix)
+        output += "$h=Get-Content -readcount 0 -path './%s.hex';" % (self.short_file)
         output += "$l=$h[0].length;"
         output += "$b=New-Object byte[] ($l/2);"
         output += "$x=0;"
         output += "for ($i=0;$i -le $l-1;$i+=2)"
         output += "{$b[$x]=[byte]::Parse($h[0].Substring($i,2),[System.Globalization.NumberStyles]::HexNumber);"
         output += "$x+=1};"
-        output += "set-content -encoding byte '%s' -value $b;\"%s\r\n" % (self.exe_filename, suffix)
-        output += "%sdel /F /Q %s.hex%s\r\n" % (prefix, self.short_file, suffix)
-        output += "%sstart /b %s%s\r\n\r\n" % (prefix, self.exe_filename, suffix)
+        output += "set-content -encoding byte '%s' -value $b;" % (self.exe_filename)
+        output += "Remove-Item -force %s.hex;" % (self.short_file)
+        output += "Get-ChildItem %s;" % (self.exe_filename)
+        output += "\"%s\r\n\r\n" % (suffix)
+        #output += '%sstart /wait /b %s%s\r\n\r\n' % (prefix, self.exe_filename, suffix)
 
         # Write file out
         self.write_file(self.posh_file, output, "PoSh", True)
