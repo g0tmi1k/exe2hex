@@ -77,16 +77,16 @@ class BinaryInput:
         self.bat_file = bat_file  # Full path of the bat file out
         self.posh_file = posh_file  # Full path of the posh file out
         self.telnet_file = None  # Full path of the telnet file out
-        self.exe_filename = ''  # Filename of binary input
-        self.bat_filename = ''  # Filename of bat output
-        self.short_file = ''  # Short filename of bat output (8.3 filename)
-        self.posh_filename = ''  # Filename of posh output
-        self.telnet_filename = ''  # Filename of telnet output
+        self.exe_filename = ""  # Filename of binary input
+        self.bat_filename = ""  # Filename of bat output
+        self.short_file = ""  # Short filename of bat output (8.3 filename)
+        self.posh_filename = ""  # Filename of posh output
+        self.telnet_filename = ""  # Filename of telnet output
         self.exe_bin = b''  # Binary input (data read in)
         self.bin_size = 0  # Binary input (size of data)
         self.byte_count = 0  # How many loops to read in binary
-        self.bat_hex = ''  # Bat hex format output
-        self.posh_hex = ''  # PoSh hex format output
+        self.bat_hex = ""  # Bat hex format output
+        self.posh_hex = ""  # PoSh hex format output
 
         # Extract the input filename from the input path (if there was one)
         if self.exe_file:
@@ -96,7 +96,7 @@ class BinaryInput:
             self.exe_filename = "binary.exe"
         verbose_msg("Output EXE filename: %s" % self.exe_filename)
 
-        # debug.exe has a limitation when renaming files > 8 characters (8.3 filename).
+        # debug.exe has a limitation when renaming files > 8 characters (8.3 filename)
         self.short_file = os.path.splitext(self.exe_filename)[0][:8]
         verbose_msg("Short filename: %s" % self.short_file)
 
@@ -125,7 +125,7 @@ class BinaryInput:
 
     # Make sure the binary size <= 64k when using bat files (limitation with debug.exe)
     def check_bat_size(self):
-        verbose_msg('Binary file size: %s' % self.bin_size)
+        verbose_msg('Binary file size: %s bytes' % self.bin_size)
 
         if self.bin_size > 65536:
             verbose_msg('Input is larger than 65536 bytes')
@@ -178,7 +178,7 @@ class BinaryInput:
         else:
             error_msg("Cannot find strip. Skipping...")
 
-    # Use upx to compress (useful for bat). Can be flag'd by AV
+    # Use UPX to compress (useful for bat). Can be flag'd by AV
     def compress_exe_upx(self, tf):
         if shutil.which("upx"):
             verbose_msg('Running UPX on %s' % tf.name)
@@ -219,7 +219,7 @@ class BinaryInput:
                 except:
                     error_exit("A problem occurred while reading the input file (%s)" % self.exe_file)
 
-                # The last byte will have "0" for its length. Break the loop.
+                # The last byte will have "0" for its length. Break the loop
                 if len(byte) == 0:
                     break
 
@@ -235,7 +235,7 @@ class BinaryInput:
         notification_msg('Reading from STDIN')
 
         # Read from STDIN
-        f = ''
+        f = ""
         try:
             f = sys.stdin.buffer.read()
         except:
@@ -299,7 +299,7 @@ class BinaryInput:
             # Start fresh. Empty the value
             self.bat_hex = ""
 
-        # Finish off the BATch file (incase there's multiple parts
+        # Finish off the BATch file (in-case there's multiple parts)
         self.finish_bat(x)
 
     # Write resulting bat file
@@ -487,13 +487,13 @@ interact
         if self.exe_file != None:
             # If there is a EXE input, check its valid
             self.check_exe()
-            # If we are to compress, now's the time!
+            # If we are to compress, now is the time!
             if compress:
                 self.compress_exe()
             self.read_bin_file()
         else:
             self.read_bin_stdin()
-            # If we are to compress, now's the time & re-read it in
+            # If we are to compress, now is the time & re-read it in
             if compress:
                 self.compress_exe()
                 self.read_bin_file()
@@ -519,6 +519,7 @@ interact
 
 
 signal.signal(signal.SIGINT, signal_handler)
+
 
 ################
 # Main Program #
@@ -560,7 +561,7 @@ if __name__ == "__main__":
                       action="count", metavar="COMPRESS")
 
     parser.add_option("-t", dest="telnet", default=False,
-                      help="Create a Expect file, to automate to Telnet session.",
+                      help="Create a Expect file, to automate to a Telnet session.",
                       action="store_true", metavar="TELNET")
 
     parser.add_option("-v", dest="verbose", default=False,
