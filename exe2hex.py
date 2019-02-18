@@ -333,7 +333,7 @@ class BinaryInput:
     # Convert binary data to a PoSh file
     def bin_to_posh(self):
         # Feedback for the user, to know where they are
-        verbose_msg('Converting to PoSH')
+        verbose_msg('Converting to PoSh')
 
         # Null any previous files
         #self.posh_hex += '%secho|set /p="">%s.hex%s\r\n' % (prefix, self.short_file, suffix)
@@ -567,7 +567,7 @@ interact
                 self.telnet_filename = "%s-bat-telnet" % (self.short_file)
                 self.telnet_file = os.path.abspath(self.bat_file.replace(self.bat_filename, self.telnet_filename))
                 self.save_expect('telnet', 'bat')
-            # Are we to make a telnet file (PoSH)?
+            # Are we to make a telnet file (PoSh)?
             if self.posh_file != None:
                 self.telnet_filename = "%s-posh-telnet" % (self.short_file)
                 self.telnet_file = os.path.abspath(self.posh_file.replace(self.posh_filename, self.telnet_filename))
@@ -580,7 +580,7 @@ interact
                 self.winexe_filename = "%s-bat-winexe" % (self.short_file)
                 self.winexe_file = os.path.abspath(self.bat_file.replace(self.bat_filename, self.winexe_filename))
                 self.save_expect('winexe', 'bat')
-            # Are we to make a winexe file (PoSH)?
+            # Are we to make a winexe file (PoSh)?
             if self.posh_file != None:
                 self.winexe_filename = "%s-posh-winexe" % (self.short_file)
                 self.winexe_file = os.path.abspath(self.posh_file.replace(self.posh_filename, self.winexe_filename))
