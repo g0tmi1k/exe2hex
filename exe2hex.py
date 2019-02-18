@@ -382,7 +382,7 @@ class BinaryInput:
         output += "$x+=1};"
         output += "set-content -encoding byte '%s' -value $b;" % (self.exe_filename)
         output += "Remove-Item -force %s.hex;" % (self.short_file)
-        output += "Get-ChildItem %s;" % (self.exe_filename)
+        #output += "Get-ChildItem %s;" % (self.exe_filename)
         output += "\"%s\r\n\r\n" % (suffix)
         #output += '%sstart /wait /b %s%s\r\n\r\n' % (prefix, self.exe_filename, suffix)
 
