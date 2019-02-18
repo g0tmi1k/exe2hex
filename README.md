@@ -318,7 +318,7 @@ Simply add exe2hex a folder in your `$PATH` variable:
 ```bash
 $ echo $PATH
 /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-$ curl https://raw.githubusercontent.com/g0tmi1k/exe2hex/master/exe2hex.py > /usr/local/bin/exe2hex
+$ curl -k -L "https://raw.githubusercontent.com/g0tmi1k/exe2hex/master/exe2hex.py" > /usr/local/bin/exe2hex
 $ chmod 0755 /usr/local/bin/exe2hex
 ```
 
