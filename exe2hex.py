@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Name: exe2hex v1.5 (2017-06-09) ~ Codename: hEXE
+# Name: exe2hex v1.5.1 (2019-02-18) ~ Codename: hEXE
 # Author: g0tmilk ~ https://blog.g0tmi1k.com/
 # Licence: MIT License ~ http://opensource.org/licenses/MIT
 # Credit to: exe2bat.exe & https://github.com/acjsec/exe2bam
@@ -16,7 +16,7 @@ from optparse import OptionParser
 
 import urllib.parse
 
-version = '1.5'
+version = '1.5.1'
 
 
 ###################
