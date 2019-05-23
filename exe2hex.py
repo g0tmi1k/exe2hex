@@ -202,25 +202,12 @@ class BinaryInput:
         # Feedback for the user, to know where they are
         verbose_msg('Reading binary file')
 
-        # Start fresh. Empty the value
-        self.exe_bin = b''
-
-        # Open the input file
-        with open(self.exe_file, "rb") as f:
-            # Loop forever
-            while 1:
-                # Read file
-                try:
-                    byte = f.read(1)
-                except:
-                    error_exit("A problem occurred while reading the input file (%s)" % self.exe_file)
-
-                # The last byte will have "0" for its length. Break the loop
-                if len(byte) == 0:
-                    break
-
-                # Add the read byte into the byte string
-                self.exe_bin += byte
+        # Read the input file
+        try:
+            with open(self.exe_file, "rb") as f:
+                self.exe_bin = f.read()
+        except:
+            error_exit("A problem occurred while reading the input file (%s)" % self.exe_file)
 
         # Set the size of the input file
         self.bin_size = os.path.getsize(self.exe_file)
