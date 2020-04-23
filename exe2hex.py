@@ -94,7 +94,7 @@ class BinaryInput:
             self.exe_filename = os.path.basename(self.exe_file)
         else:
             self.exe_filename = "binary.exe"
-        verbose_msg("Input EXE filename: %s" % self.exe_filename)
+        verbose_msg("Output EXE filename: %s" % self.exe_filename)
 
         # debug.exe has a limitation when renaming files > 8 characters (8.3 filename)
         self.short_file = os.path.splitext(self.exe_filename)[0][:8]
