@@ -675,7 +675,7 @@ if __name__ == "__main__":
         print("Example:")
         print(" $ %s -x /usr/share/windows-binaries/sbd.exe" % sys.argv[0])
         print(" $ %s -x /usr/share/windows-binaries/nc.exe -m 2 -o /var/www/html/nc.txt -cc" % sys.argv[0])
-        print(" $ cat /usr/share/windows-binaries/whoami.exe | %s -s -m 3 -o debug.bat -p ps.cmd" % sys.argv[0])
+        print(" $ cat /usr/share/windows-binaries/whoami.exe | %s -s -m 3 -o ps.cmd" % sys.argv[0])
         print('')
         print('--- --- --- --- --- --- --- --- --- --- --- --- --- --- ---')
         print('')
