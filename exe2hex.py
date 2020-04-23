@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Name: exe2hex v1.5.1 (2019-02-18) ~ Codename: hEXE
+# Name: exe2hex v1.5.2 (2020-04-24) ~ Codename: hEXE
 # Author: g0tmilk ~ https://blog.g0tmi1k.com/
 # Licence: MIT License ~ http://opensource.org/licenses/MIT
 # Credit to: exe2bat.exe & https://github.com/acjsec/exe2bam
@@ -16,7 +16,7 @@ from optparse import OptionParser
 
 import urllib.parse
 
-version = '1.5.1'
+version = '1.5.2'
 
 
 ###################
@@ -72,23 +72,21 @@ def signal_handler(signal, frame):
 
 class BinaryInput:
     # Initialization object configuration
-    def __init__(self, exe_file, bat_file, posh_file):
+    def __init__(self, exe_file, output_file, method):
         self.exe_file = exe_file  # Full path of the binary input
-        self.bat_file = bat_file  # Full path of the bat file out
-        self.posh_file = posh_file  # Full path of the posh file out
+        self.output_file = output_file # Full path of output file
         self.telnet_file = None  # Full path of the telnet file out
         self.winexe_file = None  # Full path of the winexe file out
         self.exe_filename = ""  # Filename of binary input
-        self.bat_filename = ""  # Filename of bat output
+        self.output_filename = ""  # Filename of output file
         self.short_file = ""  # Short filename of bat output (8.3 filename)
-        self.posh_filename = ""  # Filename of posh output
         self.telnet_filename = ""  # Filename of telnet output
         self.winexe_filename = ""  # Filename of winexe output
         self.exe_bin = b''  # Binary input (data read in)
         self.bin_size = 0  # Binary input (size of data)
         self.byte_count = 0  # How many loops to read in binary
-        self.bat_hex = ""  # Bat hex format output
-        self.posh_hex = ""  # PoSh hex format output
+        self.output_hex = ""  # hex format output
+        self.method = method # EXE conversion method
 
         # Extract the input filename from the input path (if there was one)
         if self.exe_file:
@@ -96,23 +94,14 @@ class BinaryInput:
             self.exe_filename = os.path.basename(self.exe_file)
         else:
             self.exe_filename = "binary.exe"
-        verbose_msg("Output EXE filename: %s" % self.exe_filename)
+        verbose_msg("Input EXE filename: %s" % self.exe_filename)
 
         # debug.exe has a limitation when renaming files > 8 characters (8.3 filename)
         self.short_file = os.path.splitext(self.exe_filename)[0][:8]
         verbose_msg("Short filename: %s" % self.short_file)
 
-        # Are we to make a bat file?
-        if self.bat_file:
-            # Get just the filename
-            self.bat_filename = os.path.basename(self.bat_file)
-            verbose_msg("BATch filename: %s" % self.bat_filename)
-
-        # Are we to make a posh file?
-        if self.posh_file:
-            # Get just the filename
-            self.posh_filename = os.path.basename(self.posh_file)
-            verbose_msg("PoSh filename: %s" % self.posh_filename)
+        self.output_filename = os.path.basename(self.output_file)
+        verbose_msg("Output filename: %s" % self.output_filename)
 
     # Make sure the input file exists
     def check_exe(self):
@@ -240,7 +229,7 @@ class BinaryInput:
     # Convert binary data to a bat file
     def bin_to_bat(self):
         # Feedback for the user, to know where they are
-        verbose_msg('Converting to BATch')
+        verbose_msg('Converting to BATch (DEBUG.exe)')
 
         # Number of 64k+/max_size loops will be the number of parts made/
         x = -1
@@ -268,10 +257,10 @@ class BinaryInput:
                 hex_size = (i - (max_size * x)) + (hex_len * 2)
 
                 # Convert to hex and debug.exe format
-                self.bat_hex += '%secho e %s>>%s.hex%s\r\necho ' % (
+                self.output_hex += '%secho e %s>>%s.hex%s\r\necho ' % (
                     prefix, '{:04x}'.format(hex_size), self.short_file, suffix)
-                self.bat_hex += ' '.join('%02x' % y for y in self.exe_bin[i:i + hex_len])
-                self.bat_hex += '>>%s.hex%s\r\n' % (self.short_file, suffix)
+                self.output_hex += ' '.join('%02x' % y for y in self.exe_bin[i:i + hex_len])
+                self.output_hex += '>>%s.hex%s\r\n' % (self.short_file, suffix)
 
                 # Save the amount of data converted - aka byte counter (debug.exe needs it at the end)
                 self.byte_count += hex_len
@@ -280,7 +269,7 @@ class BinaryInput:
             self.save_bat(x)
 
             # Start fresh. Empty the value
-            self.bat_hex = ""
+            self.output_hex = ""
 
         # Finish off the BATch file (in-case there's multiple parts)
         self.finish_bat(x)
@@ -315,22 +304,19 @@ class BinaryInput:
         #    output += '%sstart /wait /b %s%s\r\n\r\n' % (prefix, self.exe_filename, suffix)
 
         # Write the file out
-        self.write_file(self.bat_file, output, "BATch", False)
+        self.write_file(self.output_file, output, "BATch (DEBUG.exe)", False)
 
     # Convert binary data to a PoSh file
     def bin_to_posh(self):
-        # Feedback for the user, to know where they are
-        verbose_msg('Converting to PoSh')
-
         # Null any previous files
         #self.posh_hex += '%secho|set /p="">%s.hex%s\r\n' % (prefix, self.short_file, suffix)
-        self.posh_hex += '%secho|set /p="">%s.hex%s\r\n' % (prefix, self.short_file, suffix)
+        self.output_hex += '%secho|set /p="">%s.hex%s\r\n' % (prefix, self.short_file, suffix)
 
         # Loop through binary bytes
         for i in range(0, len(self.exe_bin), hex_len):
-            self.posh_hex += '%secho|set /p="' % (prefix)
-            self.posh_hex += ''.join('%02x' % i for i in self.exe_bin[i:i + hex_len])
-            self.posh_hex += '">>%s.hex%s\r\n' % (self.short_file, suffix)
+            self.output_hex += '%secho|set /p="' % (prefix)
+            self.output_hex += ''.join('%02x' % i for i in self.exe_bin[i:i + hex_len])
+            self.output_hex += '">>%s.hex%s\r\n' % (self.short_file, suffix)
 
     # Write resulting bat file
     def save_bat(self, loop=0):
@@ -339,7 +325,7 @@ class BinaryInput:
         output += '%sdebug /?%s\r\n' % (prefix, suffix)
         output += '%sif NOT %%ERRORLEVEL%% == 0 echo &echo &echo &echo **** **** **** **** ****&echo *** Missing DEBUG.exe ***&echo **** **** **** **** ****&exit /b%s\r\n' % (prefix, suffix)
         output += '%secho n %s.%s>%s.hex%s\r\n' % (prefix, self.short_file, loop, self.short_file, suffix)
-        output += self.bat_hex
+        output += self.output_hex
         output += '%secho r cx>>%s.hex%s\r\n' % (prefix, self.short_file, suffix)
         output += '%secho %s>>%s.hex%s\r\n' % (prefix, '{:04x}'.format(self.byte_count), self.short_file, suffix)
         output += '%secho w>>%s.hex%s\r\n' % (prefix, self.short_file, suffix)
@@ -348,9 +334,9 @@ class BinaryInput:
 
         # Write file out (Do we need need to overwrite?)
         if loop > 0:
-            self.write_file(self.bat_file, output, "BATch", False)
+            self.write_file(self.output_file, output, "BATch - DEBUG.exe", False)
         else:
-            self.write_file(self.bat_file, output, "BATch", True)
+            self.write_file(self.output_file, output, "BATch - DEBUG.exe", True)
 
     # Write resulting PoSh file
     def save_posh(self):
@@ -358,7 +344,7 @@ class BinaryInput:
         output = ""
         #output += '%spowershell /?%s\r\n' % (prefix, suffix)
         #output += '%sif NOT %%ERRORLEVEL%% == 0 echo &echo &echo &echo **** **** **** **** ****&echo *** Missing Powershell ***&echo **** **** **** **** ****&exit /b%s\r\n' % (prefix, suffix)
-        output += self.posh_hex
+        output += self.output_hex
         output += "%spowershell -Command \"" % (prefix)
         output += "$h=Get-Content -readcount 0 -path './%s.hex';" % (self.short_file)
         output += "$l=$h[0].length;"
@@ -374,10 +360,22 @@ class BinaryInput:
         #output += '%sstart /wait /b %s%s\r\n\r\n' % (prefix, self.exe_filename, suffix)
 
         # Write file out
-        self.write_file(self.posh_file, output, "PoSh", True)
+        self.write_file(self.output_file, output, "PoSh", True)
+        
+    # Write resulting certutil BATch file
+    def save_certutil_bat(self):
+        # Create bat file!
+        output = ""
+        output += self.output_hex
+        output += "%scertutil -f -decodeHex %s.hex %s >nul%s\r\n" % (prefix, self.short_file, self.exe_filename, suffix)
+        output += '%sdel /F /Q %s.hex%s\r\n' % (prefix, self.short_file, suffix)
+        output += '%sdir %s%s\r\n\r\n' % (prefix, self.exe_filename, suffix)
+        
+        # Write file out
+        self.write_file(self.output_file, output, "BATch - certutil.exe", True)
 
     # Write resulting expect file
-    def save_expect(self, mode='', type=''):
+    def save_expect(self, mode=''):
         port = '0'
         cmd = ""
         file = ""
@@ -397,14 +395,8 @@ class BinaryInput:
         else:
             error_exit("Unexpected mode: %s" % mode)
 
-        if type == "bat":
-            infilename = self.bat_filename
-            infile = self.bat_file
-        elif type == "posh":
-            infilename = self.posh_filename
-            infile = self.posh_file
-        else:
-            error_exit("Unexpected type: %s" % type)
+            infilename = self.output_filename
+            infile = self.output_file
 
         output = ("""#!/usr/bin/expect -f
 set timeout 10
@@ -537,41 +529,51 @@ interact
                 self.compress_exe()
                 self.read_bin_file()
 
-        # Make BATch file
-        if self.bat_file != None:
+        # Make BATch file (DEBUG.exe)
+        if self.method == "1":
             self.check_bat_size()
             self.bin_to_bat()
-
+        
+        # Make BATch file (certutil.exe) 
+        if self.method == "2":
+            # Feedback for the user, to know where they are
+            verbose_msg('Converting to BATch (certutil.exe)')
+            self.bin_to_posh()
+            self.save_certutil_bat()
+        
         # Make PoSh file
-        if self.posh_file != None:
+        if self.method == "3":
+            # Feedback for the user, to know where they are
+            verbose_msg('Converting to PoSh')
             self.bin_to_posh()
             self.save_posh()
 
         # Make Expect/Telnet file
         if telnet:
             # Are we to make a telnet file (bat)?
-            if self.bat_file != None:
-                self.telnet_filename = "%s-bat-telnet" % (self.short_file)
-                self.telnet_file = os.path.abspath(self.bat_file.replace(self.bat_filename, self.telnet_filename))
-                self.save_expect('telnet', 'bat')
+            if self.output_file != None:
+                if self.method == 1:
+                    self.telnet_filename = "%s-bat-telnet" % (self.short_file)
+                    self.telnet_file = os.path.abspath(self.output_file.replace(self.output_filename, self.telnet_filename))
+                    self.save_expect('telnet')
             # Are we to make a telnet file (PoSh)?
             if self.posh_file != None:
                 self.telnet_filename = "%s-posh-telnet" % (self.short_file)
-                self.telnet_file = os.path.abspath(self.posh_file.replace(self.posh_filename, self.telnet_filename))
-                self.save_expect('telnet', 'posh')
+                self.telnet_file = os.path.abspath(self.output_file.replace(self.output_filename, self.telnet_filename))
+                self.save_expect('telnet')
 
         # Make Expect/WinEXE file
         if winexe:
             # Are we to make a winexe file (bat)?
             if self.bat_file != None:
                 self.winexe_filename = "%s-bat-winexe" % (self.short_file)
-                self.winexe_file = os.path.abspath(self.bat_file.replace(self.bat_filename, self.winexe_filename))
-                self.save_expect('winexe', 'bat')
+                self.winexe_file = os.path.abspath(self.output_file.replace(self.output_filename, self.winexe_filename))
+                self.save_expect('winexe')
             # Are we to make a winexe file (PoSh)?
             if self.posh_file != None:
                 self.winexe_filename = "%s-posh-winexe" % (self.short_file)
-                self.winexe_file = os.path.abspath(self.posh_file.replace(self.posh_filename, self.winexe_filename))
-                self.save_expect('winexe', 'posh')
+                self.winexe_file = os.path.abspath(self.output_file.replace(self.output_filename, self.winexe_filename))
+                self.save_expect('winexe')
 
 #########################
 # End BinaryInput class #
@@ -597,12 +599,18 @@ if __name__ == "__main__":
 
     parser.add_option("-s", dest="stdin",
                       help="Read from STDIN", action="store_true", metavar="STDIN")
+                      
+    parser.add_option("-m", dest="method",
+                      help="""METHOD to convert the EXE:\t\t\t
+                      1 - DEBUG.exe method (.bat) - x86\t\t
+                      2 - certutil.exe method (.bat) - x86/x64 (DEFAULT)\t 
+                      3 - PowerShell method (.cmd) - x86/x64""", 
+                      default='2',
+                      choices=['1','2','3'], 
+                      metavar="METHOD")
 
-    parser.add_option("-b", dest="bat",
-                      help="BAT output file (DEBUG.exe method - x86)", metavar="BAT")
-
-    parser.add_option("-p", dest="posh",
-                      help="PoSh output file (PowerShell method - x86/x64)", metavar="POSH")
+    parser.add_option("-o", dest="output_file",
+                      help="Output file", metavar="output")
 
     parser.add_option("-e", dest="encode", default=False,
                       help="URL encode the output", action="store_true", metavar="ENCODE")
@@ -635,8 +643,8 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
     exe = options.exe
     stdin = options.stdin
-    bat = options.bat
-    posh = options.posh
+    method = options.method
+    output_file = options.output_file
     encode = options.encode
     prefix = options.prefix
     suffix = options.suffix
@@ -659,15 +667,15 @@ if __name__ == "__main__":
     elif len(sys.argv) <= 1:
         print('')
         print("Encodes an executable binary file into ASCII text format")
-        print("Restore using DEBUG.exe (BATch - x86) or PowerShell (PoSh - x86/x64)")
+        print("Restore using different methods (BATch or PoSh)")
         print('')
         print("Quick Guide:")
         print(" + Input binary file with -s or -x")
-        print(" + Output with -b and/or -p")
+        print(" + Output with -o")
         print("Example:")
         print(" $ %s -x /usr/share/windows-binaries/sbd.exe" % sys.argv[0])
-        print(" $ %s -x /usr/share/windows-binaries/nc.exe -b /var/www/html/nc.txt -cc" % sys.argv[0])
-        print(" $ cat /usr/share/windows-binaries/whoami.exe | %s -s -b debug.bat -p ps.cmd" % sys.argv[0])
+        print(" $ %s -x /usr/share/windows-binaries/nc.exe -m 2 -o /var/www/html/nc.txt -cc" % sys.argv[0])
+        print(" $ cat /usr/share/windows-binaries/whoami.exe | %s -s -m 3 -o debug.bat -p ps.cmd" % sys.argv[0])
         print('')
         print('--- --- --- --- --- --- --- --- --- --- --- --- --- --- ---')
         print('')
@@ -681,24 +689,30 @@ if __name__ == "__main__":
     # Too many input methods?
     if exe != None and stdin != None:
         error_exit('Cannot use both a file and STDIN for inputs at the same time')
-
-    # Any output methods?
-    if bat == None and posh == None:
-        exe_filename = os.path.splitext(os.path.basename(exe))[0]
-        bat = '%s.bat' % os.path.abspath(exe_filename)
-        posh = '%s.cmd' % os.path.abspath(exe_filename)
-        notification_msg("Outputting to %s (BATch) and %s (PoSh)" % (bat, posh))
-
-    # Do the output files clash?
-    if bat == posh:
-        error_exit('Cannot use the same output filename for both BATch (-b) and PoSh (-p)')
-
+    
+    # If output file was not provided, create one based on the selected method
+    if output_file == None:
+        if method == "1":
+            exe_filename = os.path.splitext(os.path.basename(exe))[0]
+            output_file = '%s.bat' % os.path.abspath(exe_filename)
+            notification_msg("Outputting to %s (BATch - DEBUG.exe)" % (output_file))
+        
+        if method == "2":
+            exe_filename = os.path.splitext(os.path.basename(exe))[0]
+            output_file = '%s.bat' % os.path.abspath(exe_filename)
+            notification_msg("Outputting to %s (BATch - certutil.exe)" % (output_file))
+        
+        if method == "3":
+            exe_filename = os.path.splitext(os.path.basename(exe))[0]
+            output_file = '%s.cmd' % os.path.abspath(exe_filename)
+            notification_msg("Outputting to %s (PoSh)" % (output_file))
+            
     # Is someone going to overwrite what they put in?
-    if stdin != None and (exe == bat or exe == posh):
+    if stdin != None and (exe == output_file):
         error_exit('Cannot use the same input as output')
 
     # Read in file information
-    x = BinaryInput(exe, bat, posh)
+    x = BinaryInput(exe, output_file, method)
 
     # GO!
     x.run()
